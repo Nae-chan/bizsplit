@@ -1,13 +1,21 @@
 # Render Blueprint — https://render.com/docs/blueprint-spec
 # Worker + cron services will be added in Chunk 6 (settlement engine).
+#
+# Cost strategy (decided 2026-07-05):
+# - Web service: FREE tier during development (spins down when idle; cold
+#   starts acceptable until partners log in). Upgrade to `starter` before
+#   partner onboarding (Chunk 8) or sooner if cold starts hurt.
+# - Database: PAID from day one. It will hold agreements/settlements that
+#   exist nowhere else; the free tier's 90-day expiry is unacceptable.
+# - Free tier does not run preDeployCommand, so migrations run in the
+#   startCommand instead.
 services:
   - type: web
     name: bizsplit-web
     runtime: node
-    plan: starter
+    plan: free
     buildCommand: npm ci && npm run build
-    preDeployCommand: npm run db:migrate
-    startCommand: npm run start
+    startCommand: npm run db:migrate && npm run start
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
