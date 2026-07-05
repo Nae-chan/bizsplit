@@ -1,0 +1,45 @@
+{
+  "name": "bizsplit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Partner revenue-sharing manager: agreements, transparent split math, and bidirectional settlements for e-commerce brands.",
+  "repository": "github:Nae-chan/bizsplit",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "verify": "npm run typecheck && npm run lint && npm run format:check && npm run test"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.44.0",
+    "next": "16.2.10",
+    "pg": "^8.16.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^22",
+    "@types/pg": "^8.15.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "drizzle-kit": "^0.31.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.10",
+    "prettier": "^3.6.0",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^3.2.0"
+  }
+}
