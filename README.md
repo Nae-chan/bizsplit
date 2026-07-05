@@ -24,7 +24,7 @@ All money is stored as **integer cents + currency code**. See `docs/adr/` for ar
 
 Each chunk ships deployed, tested software and is checked off here on completion.
 
-- [ ] **Chunk 0 — Foundation:** scaffold, CI, Render deploy pipeline, health check, money primitives
+- [x] **Chunk 0 — Foundation:** scaffold, CI, Render deploy pipeline, health check, money primitives *(v0.1.0 — live at [bizsplit.app](https://bizsplit.app))*
 - [ ] **Chunk 1 — Accounts & auth:** single account type, signup/login, profiles
 - [ ] **Chunk 2 — Shopify sync:** OAuth connect, order webhooks, historical sync, actual fee ingestion
 - [ ] **Chunk 3 — Products & COGS:** catalog sync, in-app costs with effective dates
