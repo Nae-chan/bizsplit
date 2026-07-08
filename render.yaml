@@ -25,6 +25,14 @@ services:
         fromDatabase:
           name: bizsplit-db
           property: connectionString
+      - key: BETTER_AUTH_URL
+        value: https://bizsplit.app
+      - key: BETTER_AUTH_SECRET
+        generateValue: true
+      - key: RESEND_API_KEY
+        sync: false # set in the Render dashboard
+      - key: EMAIL_FROM
+        value: BizSplit <noreply@bizsplit.app>
 
 databases:
   - name: bizsplit-db
