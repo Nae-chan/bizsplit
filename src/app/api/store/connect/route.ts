@@ -11,8 +11,8 @@ import { createConnection, getConnectionForUser } from "@/lib/shopify/store";
 
 const bodySchema = z.object({
   shopDomain: z.string().min(1),
-  accessToken: z.string().trim().min(10),
-  webhookSecret: z.string().trim().min(10),
+  clientId: z.string().trim().min(10),
+  clientSecret: z.string().trim().min(10),
   backfillStartDate: z.string().refine((s) => !Number.isNaN(Date.parse(s)), "Invalid date"),
 });
 
@@ -45,8 +45,8 @@ export async function POST(req: Request) {
     const conn = await createConnection({
       userId: session.user.id,
       shopDomain,
-      accessToken: parsed.data.accessToken,
-      webhookSecret: parsed.data.webhookSecret,
+      clientId: parsed.data.clientId,
+      clientSecret: parsed.data.clientSecret,
     });
 
     // Register webhooks so new orders arrive in real time.
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
     for (const topic of WEBHOOK_TOPICS) {
       const res = await shopifyGraphql<{
         webhookSubscriptionCreate: { userErrors: Array<{ message: string }> };
-      }>(shopDomain, parsed.data.accessToken, WEBHOOK_CREATE_MUTATION, { topic, callbackUrl });
+      }>(shopDomain, conn.accessToken, WEBHOOK_CREATE_MUTATION, { topic, callbackUrl });
       for (const err of res.webhookSubscriptionCreate.userErrors) {
         warnings.push(`${topic}: ${err.message}`);
       }
@@ -72,7 +72,10 @@ export async function POST(req: Request) {
   } catch (e) {
     if (e instanceof ShopifyApiError && (e.status === 401 || e.status === 403)) {
       return NextResponse.json(
-        { error: "Shopify rejected the access token — double-check it and the app's scopes." },
+        {
+          error:
+            "Shopify rejected the credentials — check the client ID/secret, the app's scopes, and that the app is installed on the store.",
+        },
         { status: 400 },
       );
     }

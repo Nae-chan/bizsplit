@@ -3,7 +3,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { shopifyOrder, shopifyOrderLine, storeConnection, syncJob } from "@/db/schema";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
-import { shopifyGraphql } from "@/lib/shopify/client";
+import { exchangeClientCredentials, shopifyGraphql } from "@/lib/shopify/client";
 import { ORDERS_PAGE_QUERY, SHOP_QUERY } from "@/lib/shopify/queries";
 import { mapOrderNode, type MappedOrder, type ShopifyOrderNode } from "@/lib/shopify/mapping";
 
@@ -21,12 +21,15 @@ export async function getConnectionForUser(userId: string) {
 export async function createConnection(opts: {
   userId: string;
   shopDomain: string;
-  accessToken: string;
-  webhookSecret: string;
+  clientId: string;
+  clientSecret: string;
 }) {
+  // The exchange doubles as validation: it fails unless the credentials are
+  // right and the app is installed on the store.
+  const token = await exchangeClientCredentials(opts.shopDomain, opts.clientId, opts.clientSecret);
   const shopInfo = await shopifyGraphql<{
     shop: { name: string; myshopifyDomain: string; currencyCode: string };
-  }>(opts.shopDomain, opts.accessToken, SHOP_QUERY);
+  }>(opts.shopDomain, token.accessToken, SHOP_QUERY);
 
   const id = randomUUID();
   await db.insert(storeConnection).values({
@@ -35,10 +38,47 @@ export async function createConnection(opts: {
     shopDomain: shopInfo.shop.myshopifyDomain,
     shopName: shopInfo.shop.name,
     currency: shopInfo.shop.currencyCode,
-    encryptedAccessToken: encryptSecret(opts.accessToken),
-    encryptedWebhookSecret: encryptSecret(opts.webhookSecret),
+    encryptedClientId: encryptSecret(opts.clientId),
+    encryptedClientSecret: encryptSecret(opts.clientSecret),
+    encryptedAccessToken: encryptSecret(token.accessToken),
+    tokenExpiresAt: token.expiresAt,
   });
-  return { id, shopName: shopInfo.shop.name, currency: shopInfo.shop.currencyCode };
+  return {
+    id,
+    shopName: shopInfo.shop.name,
+    currency: shopInfo.shop.currencyCode,
+    accessToken: token.accessToken,
+  };
+}
+
+const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
+
+/**
+ * Return a valid access token for the connection, re-exchanging the client
+ * credentials when the cached token is missing or within 5 minutes of expiry.
+ */
+export async function getAccessToken(conn: typeof storeConnection.$inferSelect): Promise<string> {
+  if (
+    conn.encryptedAccessToken &&
+    conn.tokenExpiresAt &&
+    conn.tokenExpiresAt.getTime() - Date.now() > TOKEN_REFRESH_MARGIN_MS
+  ) {
+    return decryptSecret(conn.encryptedAccessToken);
+  }
+  const fresh = await exchangeClientCredentials(
+    conn.shopDomain,
+    decryptSecret(conn.encryptedClientId),
+    decryptSecret(conn.encryptedClientSecret),
+  );
+  await db
+    .update(storeConnection)
+    .set({
+      encryptedAccessToken: encryptSecret(fresh.accessToken),
+      tokenExpiresAt: fresh.expiresAt,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(storeConnection.id, conn.id));
+  return fresh.accessToken;
 }
 
 export async function upsertMappedOrder(connectionId: string, mapped: MappedOrder) {
@@ -86,7 +126,7 @@ export async function runSyncStep(jobId: string) {
     .where(eq(storeConnection.id, job.connectionId))
     .limit(1);
   if (!conn) throw new Error("Connection not found");
-  const token = decryptSecret(conn.encryptedAccessToken);
+  const token = await getAccessToken(conn);
 
   try {
     const data = await shopifyGraphql<{

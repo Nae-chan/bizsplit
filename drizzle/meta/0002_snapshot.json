@@ -1,5 +1,5 @@
 {
-  "id": "740b7135-74ad-4ab3-8540-b5aa6a2677e6",
+  "id": "bd861c7c-7e2d-4306-9b37-3412a5da772d",
   "prevId": "86cf0cb6-2c21-409f-bc56-85bd86b29444",
   "version": "7",
   "dialect": "postgresql",
@@ -446,17 +446,29 @@
           "primaryKey": false,
           "notNull": true
         },
-        "encrypted_access_token": {
-          "name": "encrypted_access_token",
+        "encrypted_client_id": {
+          "name": "encrypted_client_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "encrypted_webhook_secret": {
-          "name": "encrypted_webhook_secret",
+        "encrypted_client_secret": {
+          "name": "encrypted_client_secret",
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "encrypted_access_token": {
+          "name": "encrypted_access_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "token_expires_at": {
+          "name": "token_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "currency": {
           "name": "currency",

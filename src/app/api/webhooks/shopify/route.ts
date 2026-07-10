@@ -7,7 +7,7 @@ import { verifyWebhookHmac } from "@/lib/shopify/webhook";
 import { shopifyGraphql } from "@/lib/shopify/client";
 import { ORDERS_PAGE_QUERY } from "@/lib/shopify/queries";
 import { mapOrderNode, type ShopifyOrderNode } from "@/lib/shopify/mapping";
-import { upsertMappedOrder } from "@/lib/shopify/store";
+import { getAccessToken, upsertMappedOrder } from "@/lib/shopify/store";
 
 /**
  * Shopify webhook receiver (orders/create, orders/updated).
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, ignored: true });
   }
 
-  if (!verifyWebhookHmac(rawBody, hmac, decryptSecret(conn.encryptedWebhookSecret))) {
+  if (!verifyWebhookHmac(rawBody, hmac, decryptSecret(conn.encryptedClientSecret))) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     const orderGid = payload.admin_graphql_api_id;
     if (!orderGid) return NextResponse.json({ ok: true, ignored: true });
 
-    const token = decryptSecret(conn.encryptedAccessToken);
+    const token = await getAccessToken(conn);
     const data = await shopifyGraphql<{
       orders: { nodes: ShopifyOrderNode[]; pageInfo: unknown };
     }>(conn.shopDomain, token, ORDERS_PAGE_QUERY, {

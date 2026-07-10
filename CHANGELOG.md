@@ -6,7 +6,7 @@ All notable changes to BizSplit are documented here. Versions are tagged at the 
 
 ### Added
 
-- Shopify sync (Chunk 2): connect a store via custom-app credentials (internal-first, approved over OAuth for v1)
+- Shopify sync (Chunk 2): connect a store with Dev Dashboard client credentials — Shopify removed legacy custom apps on 2026-01-01, so connections exchange an encrypted client ID/secret for short-lived access tokens, auto-refreshed near expiry (ADR-0006)
 - Access tokens and webhook secrets encrypted at rest (AES-256-GCM)
 - Resumable historical backfill, one page per request — no worker needed on the free tier
 - Real-time order ingestion via orders/create + orders/updated webhooks (HMAC-verified, re-fetched over GraphQL)

@@ -53,3 +53,35 @@ export function normalizeShopDomain(input: string): string {
   }
   return cleaned;
 }
+
+/**
+ * OAuth 2 client credentials grant (Dev Dashboard apps — required since
+ * Shopify removed legacy admin-created custom apps on 2026-01-01).
+ * Exchanges the app's client ID/secret for a ~24h Admin API access token.
+ */
+export async function exchangeClientCredentials(
+  shopDomain: string,
+  clientId: string,
+  clientSecret: string,
+): Promise<{ accessToken: string; expiresAt: Date }> {
+  const res = await fetch(`https://${shopDomain}/admin/oauth/access_token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({
+      grant_type: "client_credentials",
+      client_id: clientId,
+      client_secret: clientSecret,
+    }),
+  });
+  if (!res.ok) {
+    throw new ShopifyApiError(
+      `Token exchange failed (${res.status}) — check the client ID/secret and that the app is installed on this store.`,
+      res.status,
+    );
+  }
+  const body = (await res.json()) as { access_token: string; expires_in: number };
+  return {
+    accessToken: body.access_token,
+    expiresAt: new Date(Date.now() + body.expires_in * 1000),
+  };
+}

@@ -8,8 +8,8 @@ export function ConnectStoreForm() {
   const router = useRouter();
   const [form, setForm] = useState({
     shopDomain: "",
-    accessToken: "",
-    webhookSecret: "",
+    clientId: "",
+    clientSecret: "",
     backfillStartDate: "",
   });
   const [error, setError] = useState<string | null>(null);
@@ -33,9 +33,11 @@ export function ConnectStoreForm() {
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-3">
       <p className="text-sm text-gray-600">
-        In your Shopify admin, create a custom app (Settings → Apps and sales channels → Develop
-        apps) with read access to orders (including all order history), products, and Shopify
-        Payments. Paste its credentials here — they&apos;re stored encrypted.
+        In Shopify&apos;s Dev Dashboard (Settings → Apps and sales channels → Develop apps → Build
+        apps in Dev Dashboard), create an app with read access to orders (including all order
+        history), products, and Shopify Payments, then install it on your store. Paste its client
+        credentials here — they&apos;re stored encrypted, and BizSplit exchanges them for
+        short-lived access tokens automatically.
       </p>
       <label className="text-sm text-gray-600">
         Shop domain
@@ -48,25 +50,24 @@ export function ConnectStoreForm() {
         />
       </label>
       <label className="text-sm text-gray-600">
-        Admin API access token
+        Client ID
         <input
-          aria-label="Admin API access token"
-          placeholder="shpat_…"
-          type="password"
+          aria-label="Client ID"
+          placeholder="Client ID from the app's settings"
           className={`${inputCls} mt-1`}
-          value={form.accessToken}
-          onChange={(e) => setForm({ ...form, accessToken: e.target.value })}
+          value={form.clientId}
+          onChange={(e) => setForm({ ...form, clientId: e.target.value })}
         />
       </label>
       <label className="text-sm text-gray-600">
-        API secret key (for webhook verification)
+        Client secret
         <input
-          aria-label="API secret key"
-          placeholder="shpss_…"
+          aria-label="Client secret"
+          placeholder="Client secret from the app's settings"
           type="password"
           className={`${inputCls} mt-1`}
-          value={form.webhookSecret}
-          onChange={(e) => setForm({ ...form, webhookSecret: e.target.value })}
+          value={form.clientSecret}
+          onChange={(e) => setForm({ ...form, clientSecret: e.target.value })}
         />
       </label>
       <label className="text-sm text-gray-600">

@@ -66,9 +66,11 @@ export const verification = pgTable("verification", {
 });
 
 /**
- * Store connections (Chunk 2). Internal-first approach (approved 2026-07-08):
- * users paste a custom-app Admin API token; OAuth arrives with the SaaS phase.
- * Tokens are encrypted at rest (AES-256-GCM, src/lib/crypto.ts).
+ * Store connections (Chunk 2). Internal-first approach (approved 2026-07-08),
+ * updated for Shopify's 2026-01-01 removal of legacy custom apps: users paste
+ * their Dev Dashboard app's client ID + secret, and BizSplit exchanges them
+ * for short-lived access tokens (client credentials grant, ADR-0006).
+ * All credentials are encrypted at rest (AES-256-GCM, src/lib/crypto.ts).
  */
 export const storeConnection = pgTable("store_connection", {
   id: text("id").primaryKey(),
@@ -77,8 +79,12 @@ export const storeConnection = pgTable("store_connection", {
     .references(() => user.id, { onDelete: "cascade" }),
   shopDomain: text("shop_domain").notNull().unique(),
   shopName: text("shop_name").notNull(),
-  encryptedAccessToken: text("encrypted_access_token").notNull(),
-  encryptedWebhookSecret: text("encrypted_webhook_secret").notNull(),
+  /** Dev Dashboard app credentials (client credentials grant, ADR-0006). */
+  encryptedClientId: text("encrypted_client_id").notNull(),
+  encryptedClientSecret: text("encrypted_client_secret").notNull(),
+  /** Cached short-lived (~24h) access token; refreshed on demand. */
+  encryptedAccessToken: text("encrypted_access_token"),
+  tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
   currency: text("currency").notNull(),
   status: text("status", { enum: ["active", "disconnected"] })
     .notNull()
