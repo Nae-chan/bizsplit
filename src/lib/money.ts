@@ -53,3 +53,15 @@ export function formatMoney(m: Money, locale = "en-US"): string {
     currency: m.currency,
   }).format(m.amountCents / 100);
 }
+
+/**
+ * Convert a decimal money string (Shopify's format, e.g. "12.34") to integer
+ * cents without floating-point math. Supports negatives and 0-2 decimals.
+ */
+export function decimalToCents(decimal: string): number {
+  const m = decimal.trim().match(/^(-?)(\d+)(?:\.(\d{1,2}))?$/);
+  if (!m) throw new TypeError(`Not a valid decimal money string: "${decimal}"`);
+  const [, sign, whole, frac = ""] = m;
+  const cents = parseInt(whole, 10) * 100 + parseInt(frac.padEnd(2, "0") || "0", 10);
+  return sign === "-" ? -cents : cents;
+}

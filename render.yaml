@@ -33,6 +33,8 @@ services:
         sync: false # set in the Render dashboard
       - key: EMAIL_FROM
         value: BizSplit <noreply@bizsplit.app>
+      - key: TOKEN_ENCRYPTION_KEY
+        generateValue: true
 
 databases:
   - name: bizsplit-db
