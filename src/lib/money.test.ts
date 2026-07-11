@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { add, formatMoney, money, percentageShare, subtract } from "./money";
+import { add, decimalToCents, formatMoney, money, percentageShare, subtract } from "./money";
 
 describe("money", () => {
   it("rejects non-integer cents", () => {
@@ -33,5 +33,23 @@ describe("money", () => {
 
   it("formats USD", () => {
     expect(formatMoney(money(123_456))).toBe("$1,234.56");
+  });
+});
+
+describe("decimalToCents", () => {
+  it("converts typical amounts", () => {
+    expect(decimalToCents("12.34")).toBe(1234);
+    expect(decimalToCents("0.5")).toBe(50);
+    expect(decimalToCents("100")).toBe(10000);
+    expect(decimalToCents("-3.07")).toBe(-307);
+  });
+  it("avoids float drift on hard cases", () => {
+    expect(decimalToCents("0.29")).toBe(29);
+    expect(decimalToCents("19.99")).toBe(1999);
+  });
+  it("rejects garbage", () => {
+    expect(() => decimalToCents("12.345")).toThrow();
+    expect(() => decimalToCents("abc")).toThrow();
+    expect(() => decimalToCents("")).toThrow();
   });
 });

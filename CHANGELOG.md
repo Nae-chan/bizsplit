@@ -6,6 +6,18 @@ All notable changes to BizSplit are documented here. Versions are tagged at the 
 
 ### Added
 
+- Shopify sync (Chunk 2): connect a store with Dev Dashboard client credentials — Shopify removed legacy custom apps on 2026-01-01, so connections exchange an encrypted client ID/secret for short-lived access tokens, auto-refreshed near expiry (ADR-0006)
+- Access tokens and webhook secrets encrypted at rest (AES-256-GCM)
+- Resumable historical backfill, one page per request — no worker needed on the free tier
+- Real-time order ingestion via orders/create + orders/updated webhooks (HMAC-verified, re-fetched over GraphQL)
+- Actual gateway fees captured per order; "pending" until Shopify reports them (ADR-0005)
+- Order line items stored for future per-product splits; dashboard shows recent orders with fee status
+- 19 new tests incl. sync integration on in-memory Postgres with mocked Shopify API (42 total)
+
+## [0.2.0] — 2026-07-08 — Chunk 1: Accounts & auth
+
+### Added
+
 - Accounts & auth (Chunk 1): email/password signup with required email verification, login, logout, password reset — built on better-auth
 - One account type for everyone (ADR-0002); optional brand name on profile
 - Protected dashboard and account settings; profile editing
