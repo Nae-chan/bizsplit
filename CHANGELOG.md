@@ -4,6 +4,8 @@ All notable changes to BizSplit are documented here. Versions are tagged at the 
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-07-11 — Chunk 2: Shopify sync
+
 ### Added
 
 - Shopify sync (Chunk 2): connect a store with Dev Dashboard client credentials — Shopify removed legacy custom apps on 2026-01-01, so connections exchange an encrypted client ID/secret for short-lived access tokens, auto-refreshed near expiry (ADR-0006)
