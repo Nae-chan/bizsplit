@@ -9,7 +9,7 @@ import * as schema from "@/db/schema";
 /**
  * End-to-end sync test: in-memory Postgres + mocked Shopify GraphQL API.
  * Exercises connection creation (token encryption), paged backfill via
- * runSyncStep, idempotent upserts, and the fee-pending state.
+ * runOrderSyncStep, idempotent upserts, and the fee-pending state.
  */
 
 const client = new PGlite();
@@ -56,18 +56,25 @@ function orderNode(n: number, feeAmount: string | null) {
   };
 }
 
-const gqlResponses: Array<Record<string, unknown>> = [];
+/** Queued GraphQL replies: a data object, or a Response to simulate an HTTP failure. */
+const gqlResponses: Array<Record<string, unknown> | Response> = [];
 const tokenResponses: Array<Record<string, unknown>> = [];
-global.fetch = vi.fn(async (url: RequestInfo | URL) => {
-  if (String(url).includes("/admin/oauth/access_token")) {
-    const body = tokenResponses.shift();
-    if (!body) throw new Error("Unexpected token exchange — no queued response");
-    return new Response(JSON.stringify(body), { status: 200 });
-  }
-  const data = gqlResponses.shift();
-  if (!data) throw new Error("Unexpected fetch — no queued response");
-  return new Response(JSON.stringify({ data }), { status: 200 });
-}) as typeof fetch;
+const gqlRequests: Array<{ query: string; variables: Record<string, unknown> }> = [];
+function installFetchMock() {
+  global.fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+    if (String(url).includes("/admin/oauth/access_token")) {
+      const body = tokenResponses.shift();
+      if (!body) throw new Error("Unexpected token exchange — no queued response");
+      return new Response(JSON.stringify(body), { status: 200 });
+    }
+    gqlRequests.push(JSON.parse(String(init?.body)));
+    const queued = gqlResponses.shift();
+    if (!queued) throw new Error("Unexpected fetch — no queued response");
+    if (queued instanceof Response) return queued;
+    return new Response(JSON.stringify({ data: queued }), { status: 200 });
+  }) as typeof fetch;
+}
+installFetchMock();
 
 beforeAll(async () => {
   const dir = path.resolve(__dirname, "../../../drizzle");
@@ -138,7 +145,7 @@ describe("shopify sync", () => {
   });
 
   it("backfills across pages and tracks progress", async () => {
-    const { runSyncStep } = await import("./store");
+    const { runOrderSyncStep } = await import("./store");
     await testDb.insert(schema.syncJob).values({
       id: jobId,
       connectionId,
@@ -151,9 +158,9 @@ describe("shopify sync", () => {
         nodes: [orderNode(1, "0.88")],
       },
     });
-    let job = await runSyncStep(jobId);
+    let job = await runOrderSyncStep(jobId);
     expect(job.status).toBe("running");
-    expect(job.ordersSynced).toBe(1);
+    expect(job.itemsSynced).toBe(1);
 
     gqlResponses.push({
       orders: {
@@ -161,9 +168,9 @@ describe("shopify sync", () => {
         nodes: [orderNode(2, null)],
       },
     });
-    job = await runSyncStep(jobId);
+    job = await runOrderSyncStep(jobId);
     expect(job.status).toBe("completed");
-    expect(job.ordersSynced).toBe(2);
+    expect(job.itemsSynced).toBe(2);
 
     const orders = await testDb.select().from(schema.shopifyOrder);
     expect(orders).toHaveLength(2);
@@ -182,7 +189,7 @@ describe("shopify sync", () => {
   });
 
   it("marks the job failed on API errors and supports retry", async () => {
-    const { runSyncStep } = await import("./store");
+    const { runOrderSyncStep } = await import("./store");
     const retryJobId = randomUUID();
     await testDb.insert(schema.syncJob).values({
       id: retryJobId,
@@ -190,8 +197,84 @@ describe("shopify sync", () => {
       startDate: new Date("2026-06-01"),
     });
     global.fetch = vi.fn(async () => new Response("boom", { status: 500 })) as typeof fetch;
-    const job = await runSyncStep(retryJobId);
+    const job = await runOrderSyncStep(retryJobId);
     expect(job.status).toBe("failed");
     expect(job.error).toMatch(/500/);
+    installFetchMock();
+  });
+
+  it("resumes a failed order job from its cursor, keeping the progress it made", async () => {
+    const { runOrderSyncStep } = await import("./store");
+    const resumeJobId = randomUUID();
+    await testDb.insert(schema.syncJob).values({
+      id: resumeJobId,
+      connectionId,
+      startDate: new Date("2026-06-01"),
+    });
+
+    gqlResponses.push({
+      orders: {
+        pageInfo: { hasNextPage: true, endCursor: "cur-1" },
+        nodes: [orderNode(3, "0.10")],
+      },
+    });
+    const pageOne = await runOrderSyncStep(resumeJobId);
+    expect(pageOne.itemsSynced).toBe(1);
+
+    gqlResponses.push(new Response("boom", { status: 500 }));
+    const failed = await runOrderSyncStep(resumeJobId);
+    expect(failed.status).toBe("failed");
+    expect(failed.cursor).toBe("cur-1");
+    expect(failed.itemsSynced).toBe(1);
+
+    // Re-stepping the same job (the Retry button) picks up where it stopped.
+    gqlRequests.length = 0;
+    gqlResponses.push({
+      orders: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [orderNode(4, "0.20")] },
+    });
+    const resumed = await runOrderSyncStep(resumeJobId);
+    expect(resumed.status).toBe("completed");
+    expect(resumed.itemsSynced).toBe(2);
+    expect(resumed.error).toBeNull();
+    const page = gqlRequests.find((r) => r.query.includes("BizsplitOrdersPage"));
+    expect(page?.variables.after).toBe("cur-1");
+  });
+
+  it("omits the created_at floor for a job with no start date", async () => {
+    const { runOrderSyncStep } = await import("./store");
+    const fullJobId = randomUUID();
+    await testDb.insert(schema.syncJob).values({ id: fullJobId, connectionId });
+
+    gqlRequests.length = 0;
+    gqlResponses.push({
+      orders: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] },
+    });
+    await runOrderSyncStep(fullJobId);
+    const page = gqlRequests.find((r) => r.query.includes("BizsplitOrdersPage"));
+    expect(page?.variables.query).toBeUndefined();
+  });
+
+  it("fails the job with a reconnect hint when the token exchange fails", async () => {
+    const { runOrderSyncStep } = await import("./store");
+    const { eq } = await import("drizzle-orm");
+    const tokenJobId = randomUUID();
+    await testDb.insert(schema.syncJob).values({ id: tokenJobId, connectionId });
+    // Expire the cached token so a step has to re-exchange, then reject it.
+    await testDb
+      .update(schema.storeConnection)
+      .set({ tokenExpiresAt: new Date(Date.now() + 60_000) })
+      .where(eq(schema.storeConnection.id, connectionId));
+    global.fetch = vi.fn(async (url: RequestInfo | URL) => {
+      if (String(url).includes("/admin/oauth/access_token")) {
+        return new Response("nope", { status: 401 });
+      }
+      throw new Error("The sync must not reach the API without a token");
+    }) as typeof fetch;
+
+    const job = await runOrderSyncStep(tokenJobId);
+    expect(job.status).toBe("failed"); // not left running forever
+    expect(job.error).toMatch(/Token exchange failed \(401\)/);
+    expect(job.error).toMatch(/reconnect the store/i);
+    installFetchMock();
   });
 });

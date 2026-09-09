@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { extractFeesCents, mapOrderNode, type ShopifyOrderNode } from "./mapping";
+import {
+  extractFeesCents,
+  mapOrderNode,
+  mapProductNode,
+  type ShopifyOrderNode,
+  type ShopifyProductNode,
+} from "./mapping";
 
 const baseOrder: ShopifyOrderNode = {
   id: "gid://shopify/Order/1001",
@@ -75,5 +81,88 @@ describe("extractFeesCents (ADR-0005 fee-hold)", () => {
         { kind: "CAPTURE", status: "SUCCESS", fees: [{ amount: { amount: "0.30" } }] },
       ]),
     ).toBe(130);
+  });
+});
+
+const baseProduct: ShopifyProductNode = {
+  id: "gid://shopify/Product/9",
+  title: "Rip Tee",
+  handle: "rip-tee",
+  status: "ACTIVE",
+  productType: "Shirts",
+  vendor: "Ripright",
+  updatedAt: "2026-07-01T12:05:00Z",
+  featuredImage: { url: "https://cdn.shopify.com/rip-tee.png" },
+  variants: {
+    pageInfo: { hasNextPage: false },
+    nodes: [
+      {
+        id: "gid://shopify/ProductVariant/99",
+        title: "Black / L",
+        sku: "RIP-BLK-L",
+        position: 1,
+        price: "22.50",
+        updatedAt: "2026-07-01T12:05:00Z",
+      },
+    ],
+  },
+};
+
+describe("mapProductNode", () => {
+  it("converts prices to integer cents and dates to Date", () => {
+    const { product, variants } = mapProductNode(baseProduct);
+    expect(product.id).toBe("gid://shopify/Product/9");
+    expect(product.status).toBe("ACTIVE");
+    expect(product.imageUrl).toBe("https://cdn.shopify.com/rip-tee.png");
+    expect(product.shopifyUpdatedAt.toISOString()).toBe("2026-07-01T12:05:00.000Z");
+    expect(variants[0].priceCents).toBe(2250);
+    expect(Number.isInteger(variants[0].priceCents)).toBe(true);
+    expect(variants[0].sku).toBe("RIP-BLK-L");
+    expect(variants[0].position).toBe(1);
+  });
+
+  it("maps missing sku, productType, vendor and image to null", () => {
+    const { product, variants } = mapProductNode({
+      ...baseProduct,
+      productType: null,
+      vendor: null,
+      featuredImage: null,
+      variants: {
+        pageInfo: { hasNextPage: false },
+        nodes: [{ ...baseProduct.variants.nodes[0], sku: null }],
+      },
+    });
+    expect(product.productType).toBeNull();
+    expect(product.vendor).toBeNull();
+    expect(product.imageUrl).toBeNull();
+    expect(variants[0].sku).toBeNull();
+  });
+
+  it("maps a product with no variants to an empty array", () => {
+    const mapped = mapProductNode({
+      ...baseProduct,
+      variants: { pageInfo: { hasNextPage: false }, nodes: [] },
+    });
+    expect(mapped.variants).toEqual([]);
+    expect(mapped.hasMoreVariants).toBe(false);
+  });
+
+  it("flags products with more than the 100 variants we fetch", () => {
+    const mapped = mapProductNode({
+      ...baseProduct,
+      variants: { pageInfo: { hasNextPage: true }, nodes: baseProduct.variants.nodes },
+    });
+    expect(mapped.hasMoreVariants).toBe(true);
+  });
+
+  it("handles a zero price", () => {
+    const mapped = mapProductNode({
+      ...baseProduct,
+      variants: {
+        pageInfo: { hasNextPage: false },
+        nodes: [{ ...baseProduct.variants.nodes[0], price: "0.00" }],
+      },
+    });
+    expect(mapped.variants[0].priceCents).toBe(0);
   });
 });

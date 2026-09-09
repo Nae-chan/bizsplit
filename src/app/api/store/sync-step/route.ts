@@ -2,7 +2,8 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
-import { getConnectionForUser, latestSyncJob, runSyncStep } from "@/lib/shopify/store";
+import { getSyncJobForUser, runOrderSyncStep } from "@/lib/shopify/store";
+import { runProductSyncStep } from "@/lib/shopify/catalog";
 
 const bodySchema = z.object({ jobId: z.string().min(1) });
 
@@ -13,17 +14,16 @@ export async function POST(req: Request) {
   const parsed = bodySchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: "jobId required" }, { status: 400 });
 
-  // Ownership check: the job must belong to the caller's connection.
-  const conn = await getConnectionForUser(session.user.id);
-  const job = conn ? await latestSyncJob(conn.id) : null;
-  if (!job || job.id !== parsed.data.jobId) {
-    return NextResponse.json({ error: "Sync job not found" }, { status: 404 });
-  }
+  // Ownership check: the job must hang off a connection the caller owns.
+  const job = await getSyncJobForUser(session.user.id, parsed.data.jobId);
+  if (!job) return NextResponse.json({ error: "Sync job not found" }, { status: 404 });
 
-  const updated = await runSyncStep(job.id);
+  const updated =
+    job.kind === "products" ? await runProductSyncStep(job.id) : await runOrderSyncStep(job.id);
   return NextResponse.json({
     status: updated.status,
-    ordersSynced: updated.ordersSynced,
+    kind: updated.kind,
+    itemsSynced: updated.itemsSynced,
     error: updated.error ?? null,
   });
 }

@@ -102,3 +102,71 @@ export function mapOrderNode(node: ShopifyOrderNode, connectionId: string): Mapp
     })),
   };
 }
+
+/** Shapes returned by PRODUCTS_PAGE_QUERY / PRODUCT_BY_ID_QUERY. */
+export interface ShopifyProductNode {
+  id: string;
+  title: string;
+  handle: string;
+  status: string;
+  productType: string | null;
+  vendor: string | null;
+  updatedAt: string;
+  featuredImage: { url: string } | null;
+  variants: { pageInfo: { hasNextPage: boolean }; nodes: ShopifyVariantNode[] };
+}
+export interface ShopifyVariantNode {
+  id: string;
+  title: string;
+  sku: string | null;
+  position: number;
+  price: string;
+  updatedAt: string;
+}
+
+export interface MappedProduct {
+  product: {
+    id: string;
+    title: string;
+    handle: string;
+    status: string;
+    productType: string | null;
+    vendor: string | null;
+    imageUrl: string | null;
+    shopifyUpdatedAt: Date;
+  };
+  variants: Array<{
+    id: string;
+    title: string;
+    sku: string | null;
+    position: number;
+    priceCents: number;
+    shopifyUpdatedAt: Date;
+  }>;
+  /** True when the product has more than the 100 variants we fetch (deferred). */
+  hasMoreVariants: boolean;
+}
+
+export function mapProductNode(node: ShopifyProductNode): MappedProduct {
+  return {
+    product: {
+      id: node.id,
+      title: node.title,
+      handle: node.handle,
+      status: node.status,
+      productType: node.productType ?? null,
+      vendor: node.vendor ?? null,
+      imageUrl: node.featuredImage?.url ?? null,
+      shopifyUpdatedAt: new Date(node.updatedAt),
+    },
+    variants: node.variants.nodes.map((v) => ({
+      id: v.id,
+      title: v.title,
+      sku: v.sku ?? null,
+      position: v.position,
+      priceCents: decimalToCents(v.price),
+      shopifyUpdatedAt: new Date(v.updatedAt),
+    })),
+    hasMoreVariants: node.variants.pageInfo.hasNextPage,
+  };
+}

@@ -8,6 +8,7 @@ import { syncJob } from "@/db/schema";
 import { normalizeShopDomain, shopifyGraphql, ShopifyApiError } from "@/lib/shopify/client";
 import { WEBHOOK_CREATE_MUTATION } from "@/lib/shopify/queries";
 import { createConnection, getConnectionForUser } from "@/lib/shopify/store";
+import { startCatalogSync } from "@/lib/shopify/catalog";
 
 const bodySchema = z.object({
   shopDomain: z.string().min(1),
@@ -16,7 +17,13 @@ const bodySchema = z.object({
   backfillStartDate: z.string().refine((s) => !Number.isNaN(Date.parse(s)), "Invalid date"),
 });
 
-const WEBHOOK_TOPICS = ["ORDERS_CREATE", "ORDERS_UPDATED"] as const;
+const WEBHOOK_TOPICS = [
+  "ORDERS_CREATE",
+  "ORDERS_UPDATED",
+  "PRODUCTS_CREATE",
+  "PRODUCTS_UPDATE",
+  "PRODUCTS_DELETE",
+] as const;
 
 export async function POST(req: Request) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -68,7 +75,16 @@ export async function POST(req: Request) {
       startDate: new Date(parsed.data.backfillStartDate),
     });
 
-    return NextResponse.json({ ok: true, shopName: conn.shopName, jobId, warnings });
+    // Full catalog sync; the browser drives it page by page like the backfill.
+    const catalogJob = await startCatalogSync(conn.id);
+
+    return NextResponse.json({
+      ok: true,
+      shopName: conn.shopName,
+      jobId,
+      catalogJobId: catalogJob.id,
+      warnings,
+    });
   } catch (e) {
     if (e instanceof ShopifyApiError && (e.status === 401 || e.status === 403)) {
       return NextResponse.json(
