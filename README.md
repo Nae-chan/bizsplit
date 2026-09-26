@@ -16,7 +16,7 @@ Commission tools assume a store owner and subordinate "collaborators." Real part
 
 ## Stack
 
-Next.js (App Router) · TypeScript (strict) · PostgreSQL + Drizzle ORM · Vitest · Render (web service + Postgres) · GitHub Actions CI
+Next.js (App Router) · TypeScript (strict) · PostgreSQL + Drizzle ORM · Vitest · Railway (web service) + Neon (Postgres) · GitHub Actions CI
 
 All money is stored as **integer cents + currency code**. See `docs/adr/` for architecture decisions.
 
@@ -24,7 +24,7 @@ All money is stored as **integer cents + currency code**. See `docs/adr/` for ar
 
 Each chunk ships deployed, tested software and is checked off here on completion.
 
-- [x] **Chunk 0 — Foundation:** scaffold, CI, Render deploy pipeline, health check, money primitives _(v0.1.0 — live at [bizsplit.app](https://bizsplit.app))_
+- [x] **Chunk 0 — Foundation:** scaffold, CI, deploy pipeline (shipped on Render; moved to Railway + Neon, ADR-0008), health check, money primitives _(v0.1.0 — live at [bizsplit.app](https://bizsplit.app))_
 - [x] **Chunk 1 — Accounts & auth:** single account type, signup/login, profiles _(v0.2.0)_
 - [x] **Chunk 2 — Shopify sync:** client-credentials connect, order webhooks, historical sync, actual fee ingestion _(v0.3.0)_
 - [x] **Chunk 3 — Products & COGS:** catalog sync, product webhooks, append-only costs with shop-local effective dates _(v0.4.0)_

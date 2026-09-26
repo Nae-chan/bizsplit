@@ -4,6 +4,17 @@ All notable changes to BizSplit are documented here. Versions are tagged at the 
 
 ## [Unreleased]
 
+### Changed
+
+- Hosting is Railway (web service) + Neon (Postgres 17): ADR-0008 supersedes ADR-0001, and records two gates — a paid Neon plan plus an off-platform backup before real data arrives, and migrations compatible with the previous deploy before partners onboard
+- Migrations run once per deploy as Railway's pre-deploy step (`railway.json`), no longer in the start command
+- The database pool logs, rather than crashes on, an error from an idle connection (Neon ends them when its compute restarts or scales to zero), and a new connection now gives up after 10 seconds instead of waiting indefinitely
+- The long-jobs rule is reworded: jobs stay resumable with progress in the database, and scheduled work runs as a separate Railway service under its own ADR rather than inside the web server
+
+### Removed
+
+- `render.yaml`
+
 ## [0.4.0] — 2026-09-09 — Chunk 3: Products & COGS
 
 ### Added
