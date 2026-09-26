@@ -5,15 +5,23 @@ import { storeConnection } from "@/db/schema";
 import { decryptSecret } from "@/lib/crypto";
 import { verifyWebhookHmac } from "@/lib/shopify/webhook";
 import { shopifyGraphql } from "@/lib/shopify/client";
-import { ORDERS_PAGE_QUERY } from "@/lib/shopify/queries";
-import { mapOrderNode, type ShopifyOrderNode } from "@/lib/shopify/mapping";
+import { ORDERS_PAGE_QUERY, PRODUCT_BY_ID_QUERY } from "@/lib/shopify/queries";
+import {
+  mapOrderNode,
+  mapProductNode,
+  type ShopifyOrderNode,
+  type ShopifyProductNode,
+} from "@/lib/shopify/mapping";
 import { getAccessToken, upsertMappedOrder } from "@/lib/shopify/store";
+import { markProductDeleted, upsertMappedProduct } from "@/lib/shopify/catalog";
 
 /**
- * Shopify webhook receiver (orders/create, orders/updated).
- * We verify the HMAC, then re-fetch the order via GraphQL rather than
- * trusting the webhook payload — one code path for order data, and the
- * GraphQL shape includes the fee/transaction info the webhook lacks.
+ * Shopify webhook receiver (orders/create, orders/updated, products/create,
+ * products/update, products/delete). We verify the HMAC, then re-fetch the
+ * entity via GraphQL rather than trusting the webhook payload — one code path
+ * for the data, and the GraphQL shape carries fields the webhook lacks.
+ * products/delete is the exception: it soft-deletes, since the product is gone
+ * upstream and there is nothing left to fetch.
  */
 export async function POST(req: Request) {
   const rawBody = await req.text();
@@ -37,7 +45,31 @@ export async function POST(req: Request) {
   }
 
   try {
-    const payload = JSON.parse(rawBody) as { admin_graphql_api_id?: string };
+    const payload = JSON.parse(rawBody) as { id?: number | string; admin_graphql_api_id?: string };
+
+    if (topic?.startsWith("products/")) {
+      // products/delete sends only a numeric id, no admin_graphql_api_id.
+      const productGid =
+        payload.admin_graphql_api_id ??
+        (payload.id ? `gid://shopify/Product/${payload.id}` : undefined);
+      if (!productGid) return NextResponse.json({ ok: true, ignored: true });
+
+      if (topic === "products/delete") {
+        await markProductDeleted(productGid);
+      } else {
+        const token = await getAccessToken(conn);
+        const data = await shopifyGraphql<{ product: ShopifyProductNode | null }>(
+          conn.shopDomain,
+          token,
+          PRODUCT_BY_ID_QUERY,
+          { id: productGid },
+        );
+        if (data.product) await upsertMappedProduct(conn.id, mapProductNode(data.product));
+      }
+      console.info(`[webhook] ${topic} processed for ${shopDomain} (${productGid})`);
+      return NextResponse.json({ ok: true });
+    }
+
     const orderGid = payload.admin_graphql_api_id;
     if (!orderGid) return NextResponse.json({ ok: true, ignored: true });
 

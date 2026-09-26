@@ -94,6 +94,9 @@ export default async function DashboardPage() {
         <Link className="underline" href="/settings">
           Account settings
         </Link>
+        <Link className="underline" href="/products">
+          Products &amp; costs
+        </Link>
         <Link className="underline" href="/settings/store">
           Store connection
         </Link>

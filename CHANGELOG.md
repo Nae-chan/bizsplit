@@ -4,6 +4,19 @@ All notable changes to BizSplit are documented here. Versions are tagged at the 
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-09-09 — Chunk 3: Products & COGS
+
+### Added
+
+- Product catalog sync (Chunk 3): products and their variants, resumable one page per request on the same `sync_job` machinery as the order backfill (now carrying a `kind`, and counting `items_synced`)
+- products/create, products/update and products/delete webhooks; deletes are soft (`deleted_at`), because cost history hangs off variants and past orders still reference them
+- Variants that disappear from a product are soft-deleted too — except on a product with more than 100 variants, where only the first page of variants is synced and pruning is skipped, so stale variants can persist there
+- Cost of goods per variant: append-only, effective-dated rows in integer cents plus the connection's currency (ADR-0004, ADR-0007). Editing a cost inserts a new row; nothing is updated or deleted
+- Effective dates are midnight in the shop's IANA timezone, captured at connect and refreshed on each catalog sync, falling back to UTC when unknown
+- Cost resolution by the order's `placed_at`, not today's date. A variant with no cost in force resolves to null — explicitly not zero — as does an order line referencing a variant that was never synced; Chunk 5 must treat both as blocking
+- `/products` catalog browser with search, paging and today's cost per variant, plus a per-variant page with full cost history and an add-cost form
+- 100 new tests incl. catalog sync, cost resolution and sync-route integration on in-memory Postgres, and a migration test that replays 0003 over live data to prove the `orders_synced` rename keeps in-flight progress (189 total across 19 files)
+
 ## [0.3.0] — 2026-07-11 — Chunk 2: Shopify sync
 
 ### Added

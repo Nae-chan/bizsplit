@@ -27,7 +27,7 @@ Each chunk ships deployed, tested software and is checked off here on completion
 - [x] **Chunk 0 — Foundation:** scaffold, CI, Render deploy pipeline, health check, money primitives _(v0.1.0 — live at [bizsplit.app](https://bizsplit.app))_
 - [x] **Chunk 1 — Accounts & auth:** single account type, signup/login, profiles _(v0.2.0)_
 - [x] **Chunk 2 — Shopify sync:** client-credentials connect, order webhooks, historical sync, actual fee ingestion _(v0.3.0)_
-- [ ] **Chunk 3 — Products & COGS:** catalog sync, in-app costs with effective dates
+- [x] **Chunk 3 — Products & COGS:** catalog sync, product webhooks, append-only costs with shop-local effective dates _(v0.4.0)_
 - [ ] **Chunk 4 — Partnerships & agreements:** proposal → both-party e-sign → active; versioned revisions
 - [ ] **Chunk 5 — Split engine:** per-order math waterfall; golden-dataset verified to the cent
 - [ ] **Chunk 6 — Ledger & settlements:** two-way ledger, four trigger types, fee-hold, netting

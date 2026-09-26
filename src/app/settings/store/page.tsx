@@ -7,7 +7,8 @@ import { SyncProgress } from "@/components/SyncProgress";
 export default async function StoreSettingsPage() {
   const { user } = await requireSession();
   const connection = await getConnectionForUser(user.id);
-  const job = connection ? await latestSyncJob(connection.id) : null;
+  const orderJob = connection ? await latestSyncJob(connection.id, "orders") : null;
+  const catalogJob = connection ? await latestSyncJob(connection.id, "products") : null;
 
   return (
     <main className="mx-auto max-w-xl p-8">
@@ -28,12 +29,24 @@ export default async function StoreSettingsPage() {
               {connection.createdAt.toLocaleDateString()}
             </p>
           </div>
-          {job && (
+          {orderJob && (
             <SyncProgress
-              jobId={job.id}
-              initialStatus={job.status}
-              initialCount={job.ordersSynced}
-              initialError={job.error}
+              jobId={orderJob.id}
+              initialStatus={orderJob.status}
+              initialCount={orderJob.itemsSynced}
+              initialError={orderJob.error}
+              label="Order sync"
+              noun="orders"
+            />
+          )}
+          {catalogJob && (
+            <SyncProgress
+              jobId={catalogJob.id}
+              initialStatus={catalogJob.status}
+              initialCount={catalogJob.itemsSynced}
+              initialError={catalogJob.error}
+              label="Catalog sync"
+              noun="products"
             />
           )}
         </div>

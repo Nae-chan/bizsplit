@@ -18,6 +18,15 @@ export async function getConnectionForUser(userId: string) {
   return rows[0] ?? null;
 }
 
+interface ShopInfo {
+  shop: {
+    name: string;
+    myshopifyDomain: string;
+    currencyCode: string;
+    ianaTimezone?: string | null;
+  };
+}
+
 export async function createConnection(opts: {
   userId: string;
   shopDomain: string;
@@ -27,9 +36,7 @@ export async function createConnection(opts: {
   // The exchange doubles as validation: it fails unless the credentials are
   // right and the app is installed on the store.
   const token = await exchangeClientCredentials(opts.shopDomain, opts.clientId, opts.clientSecret);
-  const shopInfo = await shopifyGraphql<{
-    shop: { name: string; myshopifyDomain: string; currencyCode: string };
-  }>(opts.shopDomain, token.accessToken, SHOP_QUERY);
+  const shopInfo = await shopifyGraphql<ShopInfo>(opts.shopDomain, token.accessToken, SHOP_QUERY);
 
   const id = randomUUID();
   await db.insert(storeConnection).values({
@@ -38,6 +45,7 @@ export async function createConnection(opts: {
     shopDomain: shopInfo.shop.myshopifyDomain,
     shopName: shopInfo.shop.name,
     currency: shopInfo.shop.currencyCode,
+    ianaTimezone: shopInfo.shop.ianaTimezone ?? null,
     encryptedClientId: encryptSecret(opts.clientId),
     encryptedClientSecret: encryptSecret(opts.clientSecret),
     encryptedAccessToken: encryptSecret(token.accessToken),
@@ -81,6 +89,25 @@ export async function getAccessToken(conn: typeof storeConnection.$inferSelect):
   return fresh.accessToken;
 }
 
+/**
+ * Refresh the shop's IANA timezone on the connection. Effective-dated costs are
+ * entered as shop-local dates, so the zone has to stay current.
+ */
+export async function refreshShopTimezone(
+  conn: typeof storeConnection.$inferSelect,
+  token: string,
+): Promise<string | null> {
+  const shopInfo = await shopifyGraphql<ShopInfo>(conn.shopDomain, token, SHOP_QUERY);
+  const zone = shopInfo.shop.ianaTimezone ?? null;
+  if (zone !== conn.ianaTimezone) {
+    await db
+      .update(storeConnection)
+      .set({ ianaTimezone: zone, updatedAt: sql`now()` })
+      .where(eq(storeConnection.id, conn.id));
+  }
+  return zone;
+}
+
 export async function upsertMappedOrder(connectionId: string, mapped: MappedOrder) {
   await db
     .insert(shopifyOrder)
@@ -114,10 +141,45 @@ export async function upsertMappedOrder(connectionId: string, mapped: MappedOrde
   }
 }
 
-/** Advance a backfill by one page. Returns updated progress. */
-export async function runSyncStep(jobId: string) {
+/**
+ * Load a job for one step, putting a failed job back into `running` first. The
+ * cursor and counter are left alone, so retrying a failed job resumes from the
+ * page that failed instead of restarting the sync and losing its progress.
+ */
+export async function claimSyncJob(jobId: string) {
   const [job] = await db.select().from(syncJob).where(eq(syncJob.id, jobId)).limit(1);
   if (!job) throw new Error("Sync job not found");
+  if (job.status !== "failed") return job;
+  const [resumed] = await db
+    .update(syncJob)
+    .set({ status: "running", error: null, updatedAt: sql`now()` })
+    .where(eq(syncJob.id, jobId))
+    .returning();
+  return resumed;
+}
+
+/** Record a step failure on the job. The cursor is kept so a retry can resume. */
+export async function failSyncJob(jobId: string, error: string) {
+  const [updated] = await db
+    .update(syncJob)
+    .set({ status: "failed", error, updatedAt: sql`now()` })
+    .where(eq(syncJob.id, jobId))
+    .returning();
+  return updated;
+}
+
+/**
+ * A token exchange failure is a connection problem, not a sync problem, so it
+ * carries its own remediation hint into syncJob.error (ADR-0006).
+ */
+export function tokenFailureMessage(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err);
+  return `${message} Reconnect the store from Settings → Store connection to refresh its credentials.`;
+}
+
+/** Advance a backfill by one page. Returns updated progress. */
+export async function runOrderSyncStep(jobId: string) {
+  const job = await claimSyncJob(jobId);
   if (job.status !== "running") return job;
 
   const [conn] = await db
@@ -126,7 +188,13 @@ export async function runSyncStep(jobId: string) {
     .where(eq(storeConnection.id, job.connectionId))
     .limit(1);
   if (!conn) throw new Error("Connection not found");
-  const token = await getAccessToken(conn);
+
+  let token: string;
+  try {
+    token = await getAccessToken(conn);
+  } catch (err) {
+    return failSyncJob(jobId, tokenFailureMessage(err));
+  }
 
   try {
     const data = await shopifyGraphql<{
@@ -137,7 +205,7 @@ export async function runSyncStep(jobId: string) {
     }>(conn.shopDomain, token, ORDERS_PAGE_QUERY, {
       first: PAGE_SIZE,
       after: job.cursor,
-      query: `created_at:>='${job.startDate.toISOString()}'`,
+      query: job.startDate ? `created_at:>='${job.startDate.toISOString()}'` : undefined,
     });
 
     for (const node of data.orders.nodes) {
@@ -149,7 +217,7 @@ export async function runSyncStep(jobId: string) {
       .update(syncJob)
       .set({
         cursor: data.orders.pageInfo.endCursor,
-        ordersSynced: job.ordersSynced + data.orders.nodes.length,
+        itemsSynced: job.itemsSynced + data.orders.nodes.length,
         status: done ? "completed" : "running",
         updatedAt: sql`now()`,
       })
@@ -157,25 +225,27 @@ export async function runSyncStep(jobId: string) {
       .returning();
     return updated;
   } catch (err) {
-    const [updated] = await db
-      .update(syncJob)
-      .set({
-        status: "failed",
-        error: err instanceof Error ? err.message : String(err),
-        updatedAt: sql`now()`,
-      })
-      .where(eq(syncJob.id, jobId))
-      .returning();
-    return updated;
+    return failSyncJob(jobId, err instanceof Error ? err.message : String(err));
   }
 }
 
-export async function latestSyncJob(connectionId: string) {
+export async function latestSyncJob(connectionId: string, kind: "orders" | "products" = "orders") {
   const rows = await db
     .select()
     .from(syncJob)
-    .where(eq(syncJob.connectionId, connectionId))
+    .where(and(eq(syncJob.connectionId, connectionId), eq(syncJob.kind, kind)))
     .orderBy(desc(syncJob.createdAt))
     .limit(1);
   return rows[0] ?? null;
+}
+
+/** A sync job of any kind, scoped to the caller — the ownership check for /api/store/sync-step. */
+export async function getSyncJobForUser(userId: string, jobId: string) {
+  const rows = await db
+    .select({ job: syncJob })
+    .from(syncJob)
+    .innerJoin(storeConnection, eq(syncJob.connectionId, storeConnection.id))
+    .where(and(eq(syncJob.id, jobId), eq(storeConnection.userId, userId)))
+    .limit(1);
+  return rows[0]?.job ?? null;
 }
