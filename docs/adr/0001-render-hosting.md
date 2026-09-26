@@ -1,6 +1,6 @@
 # ADR-0001: Host on Render
 
-**Status:** Accepted · **Date:** 2026-07-04
+**Status:** Superseded by [ADR-0008](0008-railway-neon-hosting.md) · **Date:** 2026-07-04
 
 ## Context
 

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 
 /**
- * Health check used by Render and uptime monitoring.
- * Database connectivity check will be added once the app has real queries (Chunk 1).
+ * Railway deploy health check and uptime monitoring; DB-free on purpose.
+ * Pre-deploy migrations already prove the database is reachable, and a query
+ * here would wake Neon's idle compute on every check (ADR-0008).
  */
 export function GET() {
   return NextResponse.json({ status: "ok", service: "bizsplit", time: new Date().toISOString() });

@@ -34,8 +34,16 @@ npm run db:migrate
 - **Effective dates are shop-local midnight**, from the connection's `iana_timezone`, falling back to
   UTC (ADR-0007). `shopDateToInstant` in `src/lib/cogs/resolve.ts` handles DST, including midnights
   that are skipped or that happen twice. Do not reimplement this conversion elsewhere.
-- **No background workers.** The app runs on Render's free web tier, so long jobs are resumable and
-  advance one page per HTTP request, driven from the browser. Progress lives in `sync_job`.
+- **Long jobs are resumable and persist their progress.** Each step is idempotent and its progress
+  lives in the database (`sync_job` for syncs), so a killed or redeployed process loses nothing.
+  User-started jobs advance one page per HTTP request, driven from the browser. The web server runs
+  no in-process schedulers or queues: Railway restarts it at will, and versions overlap during
+  deploys. Scheduled work runs as a separate Railway cron or worker service under the same rules,
+  and adding one needs an ADR.
+- **Hosting is Railway (app) + Neon (Postgres 17)** (ADR-0008). Migrations run as Railway's
+  pre-deploy step. Before real data (Chunk 6, or partner onboarding if earlier), Neon moves to
+  Launch and an off-platform backup is added. Before partners onboard, migrations must work with the
+  previously deployed version.
 - **Shopify access tokens come from `getAccessToken`** (ADR-0006), never from the encrypted column
   directly. Tokens are short-lived and auto-refreshed. Secrets are AES-256-GCM encrypted at rest via
   `src/lib/crypto.ts`.
@@ -50,6 +58,7 @@ npm run db:migrate
 | `src/lib/cogs/`            | `resolve` (pure, no db) and `store` (queries). `resolveVariantCostAt` is the interface the split engine will consume                             |
 | `src/app/api/`             | route handlers, session-guarded via `src/lib/session.ts`                                                                                         |
 | `drizzle/`                 | generated migrations plus journal and snapshots                                                                                                  |
+| `railway.json`             | Railway build and deploy config; migrations run in `preDeployCommand`, pinned by `src/deploy-config.test.ts`                                     |
 | `docs/adr/`, `docs/plans/` | decisions, and per-chunk implementation plans                                                                                                    |
 
 Pure logic goes in a module with no database import, and its queries go in a sibling `store.ts`.
